@@ -137,31 +137,42 @@ async function getShorts(res, apiKey, channelId) {
     // Latest is already in date order from the search
     const latest = shorts[0]; // First in the filtered list (most recent)
 
-    // Build result (deduplicate if same video appears in multiple categories)
+    // Build result: pick up to 3 unique videos with labels
     const result = [];
     const seen = new Set();
 
     const addShort = (video, label) => {
-        if (video && !seen.has(video.id)) {
-            seen.add(video.id);
-            result.push({
-                videoId: video.id,
-                title: video.snippet.title,
-                views: video.statistics?.viewCount,
-                likes: video.statistics?.likeCount,
-                label,
-            });
-        }
+        if (!video) return false;
+        if (seen.has(video.id)) return false;
+        seen.add(video.id);
+        result.push({
+            videoId: video.id,
+            title: video.snippet.title,
+            views: video.statistics?.viewCount,
+            likes: video.statistics?.likeCount,
+            label,
+        });
+        return true;
     };
 
-    addShort(byViews[0], 'Most Viewed');
-    if (result.length < 3) addShort(byLikes[0], 'Most Liked');
-    if (result.length < 3) addShort(latest, 'Latest Upload');
+    // Try each category; if a video is already used, skip to the next in that sorted list
+    const categories = [
+        { list: byViews, label: 'Most Viewed' },
+        { list: byLikes, label: 'Most Liked' },
+        { list: shorts,  label: 'Latest Upload' },
+    ];
 
-    // Fill remaining slots if needed
-    for (const short of shorts) {
+    for (const { list, label } of categories) {
         if (result.length >= 3) break;
-        addShort(short, '');
+        for (const video of list) {
+            if (addShort(video, label)) break;
+        }
+    }
+
+    // Fill remaining slots if fewer than 3 unique shorts
+    for (const video of shorts) {
+        if (result.length >= 3) break;
+        addShort(video, '');
     }
 
     return res.status(200).json({ shorts: result });
